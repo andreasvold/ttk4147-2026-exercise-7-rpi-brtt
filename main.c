@@ -33,6 +33,13 @@ void io_init(void) {
     digitalWrite(RESPONSE_B, HIGH);
     digitalWrite(RESPONSE_C, HIGH);
 }
+void sleep_realtime(long nanoseconds)
+{
+    struct timespec ts;
+    ts.tv_sec = nanoseconds / 1e9;
+    ts.tv_nsec = nanoseconds % (long)1e9;
+    clock_nanosleep(CLOCK_MONOTONIC, 0, &ts, NULL);
+}
 
 int set_cpu(int cpu_id)
 {
@@ -128,12 +135,40 @@ void* disturbance_task() {
         asm volatile("" ::: "memory");
     }
 }
+void* PeriodicPollTask(void* arg) {
+    set_cpu(1);
+    responseTaskArgs* args = (responseTaskArgs*)arg;
+    
+    while (1) {
+        // Busy-wait until the test pin goes LOW (signal from BRTT)
+        if(digitalRead(args->test_pin) == LOW) {
+            // Respond by pulling the response pin LOW
+            digitalWrite(args->response_pin, LOW);
+            
+            // Wait for the test pin to return HIGH (end of the test signal pulse)
+            while (digitalRead(args->test_pin) == LOW) {
+                // Busy waiting for test signal release
+            }
+            
+            // Return response pin to HIGH
+            digitalWrite(args->response_pin, HIGH);
+        }
+
+        //2 000 000 ns = 2 ms
+        sleep_realtime(2000000);
+    }
+    
+    return NULL;
+}
 
 int main(void) {
     // Initialize hardware and pins
     io_init();
     
     pthread_t threadA, threadB, threadC;
+
+    // periodic poll threads handle
+    //pthread_t threadA_periodic, threadB_periodic, threadC_periodic;
 
     pthread_t threads[NUM_DIST_THREADS];
     
@@ -144,6 +179,7 @@ int main(void) {
     
     printf("Starting continuous response tasks for A, B, and C...\n");
     
+    // creating the disturbance threads
     for (int i = 0; i<NUM_DIST_THREADS; i++){
         pthread_create(&threads[i], NULL, disturbance_task, NULL);
     }
@@ -151,6 +187,11 @@ int main(void) {
     pthread_create(&threadA, NULL, TaskA, &argsA);
     pthread_create(&threadB, NULL, TaskB, &argsB);
     pthread_create(&threadC, NULL, TaskC, &argsC);
+
+    // creating the periodic poll threads
+    //pthread_create(&threadA_periodic, NULL, PeriodicPollTask, &argsA);
+    //pthread_create(&threadB_periodic, NULL, PeriodicPollTask, &argsB);
+    //pthread_create(&threadC_periodic, NULL, PeriodicPollTask, &argsC);
     
     for(int i = 0;i<NUM_DIST_THREADS;i++){
         pthread_join(threads[i],NULL);
@@ -159,6 +200,11 @@ int main(void) {
     pthread_join(threadA, NULL);
     pthread_join(threadB, NULL);
     pthread_join(threadC, NULL);
+
+    //joining the periodic poll threads
+    //pthread_join(threadA_periodic, NULL);
+    //pthread_join(threadB_periodic, NULL);
+    //pthread_join(threadC_periodic, NULL);
 
     
     return 0;
