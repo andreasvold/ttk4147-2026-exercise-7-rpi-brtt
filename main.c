@@ -13,6 +13,8 @@
 #define TEST_C     16
 #define RESPONSE_C 1
 
+#define NUM_DIST_THREADS 10
+
 // Argument structure shared across all thread tasks
 typedef struct {
     int test_pin;
@@ -119,12 +121,21 @@ void* TaskC(void* arg) {
     
     return NULL;
 }
+void* disturbance_task() {
+    set_cpu(1);
+
+    while(1){
+        asm volatile("" ::: "memory");
+    }
+}
 
 int main(void) {
     // Initialize hardware and pins
     io_init();
     
     pthread_t threadA, threadB, threadC;
+
+    pthread_t threads[NUM_DIST_THREADS];
     
     // Setup argument structs for each thread using the renamed pins
     responseTaskArgs argsA = { .test_pin = TEST_A, .response_pin = RESPONSE_A };
@@ -133,15 +144,22 @@ int main(void) {
     
     printf("Starting continuous response tasks for A, B, and C...\n");
     
+    for (int i = 0; i<NUM_DIST_THREADS; i++){
+        pthread_create(&threads[i], NULL, disturbance_task, NULL);
+    }
     // Create POSIX threads for Tasks A, B, and C
     pthread_create(&threadA, NULL, TaskA, &argsA);
     pthread_create(&threadB, NULL, TaskB, &argsB);
     pthread_create(&threadC, NULL, TaskC, &argsC);
     
+    for(int i = 0;i<NUM_DIST_THREADS;i++){
+        pthread_join(threads[i],NULL);
+    }
     // Join threads (since they run indefinitely, execution stays here)
     pthread_join(threadA, NULL);
     pthread_join(threadB, NULL);
     pthread_join(threadC, NULL);
+
     
     return 0;
 }
