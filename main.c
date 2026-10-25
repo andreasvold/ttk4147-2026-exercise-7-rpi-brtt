@@ -4,6 +4,7 @@
 #include <pthread.h>
 #include <unistd.h>
 #include <wiringPi.h>
+#include <sched.h>
 
 #define TEST_A     8
 #define RESPONSE_A 9
@@ -31,8 +32,21 @@ void io_init(void) {
     digitalWrite(RESPONSE_C, HIGH);
 }
 
+int set_cpu(int cpu_id)
+{
+    int num_cores = sysconf(_SC_NPROCESSORS_ONLN);
+    if (cpu_id < 0 || cpu_id >= num_cores)
+        return EINVAL;
+
+    cpu_set_t cpu;
+    CPU_ZERO(&cpu);
+    CPU_SET(cpu_id, &cpu);
+    return pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpu);
+}
+
 // Reusable continuously running thread function for Tasks A, B, and C
 void* TaskA(void* arg) {
+    set_cpu(1);
     responseTaskArgs* args = (responseTaskArgs*)arg;
     
     while (1) {
@@ -57,6 +71,7 @@ void* TaskA(void* arg) {
 }
 // Reusable continuously running thread function for Tasks A, B, and C
 void* TaskB(void* arg) {
+    set_cpu(1);
     responseTaskArgs* args = (responseTaskArgs*)arg;
     
     while (1) {
@@ -81,6 +96,7 @@ void* TaskB(void* arg) {
 }
 // Reusable continuously running thread function for Tasks A, B, and C
 void* TaskC(void* arg) {
+    set_cpu(1);
     responseTaskArgs* args = (responseTaskArgs*)arg;
     
     while (1) {
